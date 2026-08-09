@@ -1,0 +1,6 @@
+{
+  "name": "Lead Enrichment Agent",
+  "description": "Finds matching LinkedIn profiles via Google search, enriches them with verified contact and company data, and outputs clean CSV/tabular leads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
