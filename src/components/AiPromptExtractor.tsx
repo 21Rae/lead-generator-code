@@ -33,19 +33,20 @@ export const AiPromptExtractor: React.FC<AiPromptExtractorProps> = ({ onProfileE
         body: JSON.stringify({ userPrompt: promptToUse }),
       });
 
-      const contentType = res.headers.get('content-type');
-      if (!res.ok || !contentType || !contentType.includes('application/json')) {
-        const rawText = await res.text();
-        const isHtml = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().startsWith('the page');
-        const errorDetail = isHtml
-          ? `Server Endpoint Error (${res.status}): ${res.statusText || 'Endpoint not found'}`
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch (_) {
+        const isHtmlOrTextErr = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().includes('server error') || rawText.trim().toLowerCase().includes('page');
+        const errorDetail = isHtmlOrTextErr
+          ? `Server Error (${res.status}): ${res.statusText || 'Service temporarily unavailable'}`
           : rawText;
         throw new Error(errorDetail || 'Failed to generate profile');
       }
 
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to generate profile');
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to generate profile');
       }
 
       onProfileExtracted(data.profile);

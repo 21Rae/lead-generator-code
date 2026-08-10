@@ -1,5 +1,33 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+export function safeJsonParse<T>(input: string | null | undefined, fallback: T): T {
+  if (!input || typeof input !== "string") return fallback;
+  const trimmed = input.trim();
+  if (!trimmed) return fallback;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    try {
+      const stripped = trimmed
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      return JSON.parse(stripped);
+    } catch (_) {
+      try {
+        const match = trimmed.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+        if (match) {
+          return JSON.parse(match[1]);
+        }
+      } catch (_) {
+        // Fallback
+      }
+    }
+  }
+  return fallback;
+}
+
 export interface PipelineQueryParams {
   jobTitle: string;
   industry: string;
@@ -136,13 +164,17 @@ export async function executeLeadPipeline(
       )}&api_key=${serpApiKey}`;
       const resp = await fetch(serpUrl);
       if (resp.ok) {
-        const data = await resp.json();
-        if (Array.isArray(data.organic_results)) {
-          serpApiUsed = true;
-          rawSearchResults = data.organic_results.map((item: any) => ({
-            title: item.title || "",
-            link: item.link || "",
-          }));
+        try {
+          const data = await resp.json();
+          if (data && Array.isArray(data.organic_results)) {
+            serpApiUsed = true;
+            rawSearchResults = data.organic_results.map((item: any) => ({
+              title: item.title || "",
+              link: item.link || "",
+            }));
+          }
+        } catch (jsonErr) {
+          console.warn("SerpAPI response json parse failed:", jsonErr);
         }
       } else {
         console.warn(`SerpAPI error status ${resp.status}, falling back`);
@@ -176,11 +208,11 @@ export async function executeLeadPipeline(
         },
       });
 
-      const parsed = JSON.parse(aiResponse.text || "[]");
+      const parsed = safeJsonParse(aiResponse?.text, []);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        rawSearchResults = parsed.map((p) => ({
-          title: p.title || `${p.full_name} | ${params.jobTitle}`,
-          link: p.link || `https://linkedin.com/in/${p.full_name.toLowerCase().replace(/\s+/g, '-')}`,
+        rawSearchResults = parsed.map((p: any) => ({
+          title: p.title || `${p.full_name || 'Lead'} | ${params.jobTitle}`,
+          link: p.link || `https://linkedin.com/in/${String(p.full_name || 'lead').toLowerCase().replace(/\s+/g, '-')}`,
         }));
       }
     } catch (err) {
@@ -271,12 +303,16 @@ export async function executeLeadPipeline(
 
           status = resp.status;
           if (resp.ok) {
-            const json = await resp.json();
-            if (json.status === 200 && json.data) {
-              pdlData = json.data;
-              likelihoodScore = json.likelihood ?? 8;
-              pdlUsed = true;
-              break;
+            try {
+              const json = await resp.json();
+              if (json && json.status === 200 && json.data) {
+                pdlData = json.data;
+                likelihoodScore = json.likelihood ?? 8;
+                pdlUsed = true;
+                break;
+              }
+            } catch (pdlJsonErr) {
+              console.warn("PDL response JSON parse error:", pdlJsonErr);
             }
           } else if (resp.status === 429 || resp.status >= 500) {
             await new Promise((r) => setTimeout(r, attempt * 500));

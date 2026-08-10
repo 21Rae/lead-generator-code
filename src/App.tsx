@@ -28,19 +28,20 @@ export default function App() {
         body: JSON.stringify(params),
       });
 
-      const contentType = res.headers.get('content-type');
-      if (!res.ok || !contentType || !contentType.includes('application/json')) {
-        const rawText = await res.text();
-        const isHtml = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().startsWith('the page');
-        const errorDetail = isHtml
-          ? `Server Endpoint Error (${res.status}): ${res.statusText || 'Page or endpoint not found'}`
+      const rawText = await res.text();
+      let resData: any = null;
+      try {
+        resData = JSON.parse(rawText);
+      } catch (_) {
+        const isHtmlOrTextErr = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().includes('server error') || rawText.trim().toLowerCase().includes('page');
+        const errorDetail = isHtmlOrTextErr
+          ? `Server Error (${res.status}): ${res.statusText || 'Service temporarily unavailable'}`
           : rawText;
         throw new Error(errorDetail || 'Pipeline execution failed.');
       }
 
-      const resData = await res.json();
-      if (!resData.success) {
-        throw new Error(resData.error || 'Pipeline execution failed.');
+      if (!res.ok || !resData || !resData.success) {
+        throw new Error(resData?.error || 'Pipeline execution failed.');
       }
 
       const newRun: SavedPipelineRun = {
