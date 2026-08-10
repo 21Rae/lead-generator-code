@@ -28,6 +28,16 @@ export default function App() {
         body: JSON.stringify(params),
       });
 
+      const contentType = res.headers.get('content-type');
+      if (!res.ok || !contentType || !contentType.includes('application/json')) {
+        const rawText = await res.text();
+        const isHtml = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().startsWith('the page');
+        const errorDetail = isHtml
+          ? `Server Endpoint Error (${res.status}): ${res.statusText || 'Page or endpoint not found'}`
+          : rawText;
+        throw new Error(errorDetail || 'Pipeline execution failed.');
+      }
+
       const resData = await res.json();
       if (!resData.success) {
         throw new Error(resData.error || 'Pipeline execution failed.');
@@ -68,9 +78,6 @@ export default function App() {
                   v2.0 Pipeline
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400">
-                SerpAPI (Google) → Extract → People Data Labs (Enrich) → Clean CSV
-              </p>
             </div>
           </div>
 

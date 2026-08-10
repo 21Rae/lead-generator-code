@@ -40,6 +40,17 @@ export const PipelineSearchForm: React.FC<PipelineSearchFormProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userPrompt: aiPrompt }),
       });
+
+      const contentType = res.headers.get('content-type');
+      if (!res.ok || !contentType || !contentType.includes('application/json')) {
+        const rawText = await res.text();
+        const isHtml = rawText.trim().startsWith('<') || rawText.trim().toLowerCase().startsWith('the page');
+        const errorDetail = isHtml
+          ? `Server Endpoint Error (${res.status}): ${res.statusText || 'Endpoint not found'}`
+          : rawText;
+        throw new Error(errorDetail || 'AI generation failed');
+      }
+
       const data = await res.json();
       if (data.success && data.profile) {
         if (data.profile.position) setJobTitle(data.profile.position);
