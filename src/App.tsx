@@ -75,9 +75,6 @@ export default function App() {
             <div>
               <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
                 LinkedIn Lead Enrichment Agent
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
-                  v2.0 Pipeline
-                </span>
               </h1>
             </div>
           </div>

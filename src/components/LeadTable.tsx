@@ -14,7 +14,11 @@ import {
   Twitter,
   Linkedin,
   Filter,
-  UserCheck
+  UserCheck,
+  Database,
+  Loader2,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { downloadCSV, leadsToCSV } from '../utils/csv';
 
@@ -27,6 +31,11 @@ export const LeadTable: React.FC<LeadTableProps> = ({ leads, querySummary }) => 
   const [searchTerm, setSearchTerm] = useState('');
   const [completenessFilter, setCompletenessFilter] = useState<'all' | 'full' | 'partial'>('all');
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Supabase save states
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isSavingAll, setIsSavingAll] = useState<boolean>(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleCopy = (text: string, id: string) => {
     if (!text) return;
@@ -52,6 +61,40 @@ export const LeadTable: React.FC<LeadTableProps> = ({ leads, querySummary }) => 
   const handleDownloadThisTableCSV = () => {
     const csvData = leadsToCSV(filteredLeads);
     downloadCSV(csvData, `enriched_leads_${Date.now()}.csv`);
+  };
+
+  const handleSaveAllLeads = async () => {
+    if (filteredLeads.length === 0) return;
+
+    setIsSavingAll(true);
+    setStatusMsg(null);
+
+    try {
+      const res = await fetch('/api/save-supabase-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads: filteredLeads }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save leads to Supabase.');
+      }
+
+      setIsSaved(true);
+      setStatusMsg({
+        type: 'success',
+        text: `Successfully added all ${filteredLeads.length} leads to the enriched_leads table in Supabase!`,
+      });
+    } catch (err: any) {
+      console.error('Error saving all rows:', err);
+      setStatusMsg({
+        type: 'error',
+        text: err?.message || 'Failed to save leads to Supabase.',
+      });
+    } finally {
+      setIsSavingAll(false);
+    }
   };
 
   return (
@@ -104,6 +147,22 @@ export const LeadTable: React.FC<LeadTableProps> = ({ leads, querySummary }) => 
             </button>
           </div>
 
+          {/* Single Push All to Supabase Button */}
+          <button
+            onClick={handleSaveAllLeads}
+            disabled={isSavingAll || filteredLeads.length === 0}
+            id="push-all-supabase-btn"
+            type="button"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white shadow-xs transition cursor-pointer disabled:cursor-not-allowed"
+          >
+            {isSavingAll ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Database className="w-4 h-4" />
+            )}
+            <span>{isSavingAll ? 'Pushing All...' : 'Push All to Database'}</span>
+          </button>
+
           {/* CSV Download Button */}
           <button
             onClick={handleDownloadThisTableCSV}
@@ -116,6 +175,32 @@ export const LeadTable: React.FC<LeadTableProps> = ({ leads, querySummary }) => 
           </button>
         </div>
       </div>
+
+      {/* STATUS NOTIFICATION */}
+      {statusMsg && (
+        <div
+          className={`flex items-center justify-between gap-3 p-3 text-xs font-medium rounded-xl border ${
+            statusMsg.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {statusMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{statusMsg.text}</span>
+          </div>
+          <button
+            onClick={() => setStatusMsg(null)}
+            className="text-xs font-bold underline text-slate-500 hover:text-slate-800"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* SEARCH BAR */}
       <div className="relative">
@@ -152,145 +237,147 @@ export const LeadTable: React.FC<LeadTableProps> = ({ leads, querySummary }) => 
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {filteredLeads.map((lead, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/90 transition-colors">
-                  {/* full_name */}
-                  <td className="px-4 py-3.5 whitespace-nowrap font-bold text-slate-900">
-                    <div className="flex items-center gap-1.5">
-                      <span>{lead.full_name}</span>
-                      {lead.enrichment_completeness === 'full' && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Full Contact Enriched" />
-                      )}
-                    </div>
-                  </td>
-
-                  {/* sex */}
-                  <td className="px-3 py-3.5 whitespace-nowrap capitalize text-slate-500">
-                    {lead.sex || '-'}
-                  </td>
-
-                  {/* linkedin_url */}
-                  <td className="px-4 py-3.5 whitespace-nowrap">
-                    {lead.linkedin_url ? (
-                      <a
-                        href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-800 font-medium hover:underline"
-                      >
-                        <Linkedin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                        <span className="max-w-[140px] truncate">{lead.linkedin_url}</span>
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                    ) : (
-                      <span className="text-slate-300 italic">-</span>
-                    )}
-                  </td>
-
-                  {/* headline */}
-                  <td className="px-5 py-3.5 text-slate-700 min-w-[200px] max-w-xs truncate" title={lead.headline}>
-                    {lead.headline || '-'}
-                  </td>
-
-                  {/* job_company_name */}
-                  <td className="px-4 py-3.5 whitespace-nowrap font-semibold text-slate-800">
-                    <div className="flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{lead.job_company_name || '-'}</span>
-                    </div>
-                  </td>
-
-                  {/* work_email */}
-                  <td className="px-4 py-3.5 whitespace-nowrap">
-                    {lead.work_email ? (
+              {filteredLeads.map((lead, idx) => {
+                return (
+                  <tr key={idx} className="hover:bg-slate-50/90 transition-colors">
+                    {/* full_name */}
+                    <td className="px-4 py-3.5 whitespace-nowrap font-bold text-slate-900">
                       <div className="flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="font-mono text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80">
-                          {lead.work_email}
-                        </span>
-                        <button
-                          onClick={() => handleCopy(lead.work_email, `email-${idx}`)}
-                          className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
-                          title="Copy email"
+                        <span>{lead.full_name}</span>
+                        {lead.enrichment_completeness === 'full' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Full Contact Enriched" />
+                        )}
+                      </div>
+                    </td>
+
+                    {/* sex */}
+                    <td className="px-3 py-3.5 whitespace-nowrap capitalize text-slate-500">
+                      {lead.sex || '-'}
+                    </td>
+
+                    {/* linkedin_url */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {lead.linkedin_url ? (
+                        <a
+                          href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-800 font-medium hover:underline"
                         >
-                          {copiedField === `email-${idx}` ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] font-medium border border-amber-200/60">
-                        partial
-                      </span>
-                    )}
-                  </td>
+                          <Linkedin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                          <span className="max-w-[140px] truncate">{lead.linkedin_url}</span>
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 italic">-</span>
+                      )}
+                    </td>
 
-                  {/* phone_numbers */}
-                  <td className="px-4 py-3.5 whitespace-nowrap font-mono text-slate-700">
-                    {lead.phone_numbers ? (
+                    {/* headline */}
+                    <td className="px-5 py-3.5 text-slate-700 min-w-[200px] max-w-xs truncate" title={lead.headline}>
+                      {lead.headline || '-'}
+                    </td>
+
+                    {/* job_company_name */}
+                    <td className="px-4 py-3.5 whitespace-nowrap font-semibold text-slate-800">
                       <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{lead.phone_numbers}</span>
+                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{lead.job_company_name || '-'}</span>
                       </div>
-                    ) : (
-                      <span className="text-slate-300 italic">-</span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* company_website */}
-                  <td className="px-4 py-3.5 whitespace-nowrap">
-                    {lead.company_website ? (
-                      <a
-                        href={lead.company_website.startsWith('http') ? lead.company_website : `https://${lead.company_website}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-medium"
-                      >
-                        <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>{lead.company_website}</span>
-                      </a>
-                    ) : (
-                      <span className="text-slate-300 italic">-</span>
-                    )}
-                  </td>
+                    {/* work_email */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {lead.work_email ? (
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="font-mono text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80">
+                            {lead.work_email}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(lead.work_email, `email-${idx}`)}
+                            className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
+                            title="Copy email"
+                          >
+                            {copiedField === `email-${idx}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] font-medium border border-amber-200/60">
+                          partial
+                        </span>
+                      )}
+                    </td>
 
-                  {/* company_facebook */}
-                  <td className="px-3 py-3.5 whitespace-nowrap">
-                    {lead.company_facebook ? (
-                      <a
-                        href={lead.company_facebook.startsWith('http') ? lead.company_facebook : `https://${lead.company_facebook}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        <Facebook className="w-3.5 h-3.5 shrink-0" />
-                        <span className="max-w-[100px] truncate">{lead.company_facebook}</span>
-                      </a>
-                    ) : (
-                      <span className="text-slate-300 italic">-</span>
-                    )}
-                  </td>
+                    {/* phone_numbers */}
+                    <td className="px-4 py-3.5 whitespace-nowrap font-mono text-slate-700">
+                      {lead.phone_numbers ? (
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{lead.phone_numbers}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 italic">-</span>
+                      )}
+                    </td>
 
-                  {/* company_twitter */}
-                  <td className="px-3 py-3.5 whitespace-nowrap">
-                    {lead.company_twitter ? (
-                      <a
-                        href={lead.company_twitter.startsWith('http') ? lead.company_twitter : `https://${lead.company_twitter}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sky-500 hover:underline flex items-center gap-1"
-                      >
-                        <Twitter className="w-3.5 h-3.5 shrink-0" />
-                        <span className="max-w-[100px] truncate">{lead.company_twitter}</span>
-                      </a>
-                    ) : (
-                      <span className="text-slate-300 italic">-</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    {/* company_website */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {lead.company_website ? (
+                        <a
+                          href={lead.company_website.startsWith('http') ? lead.company_website : `https://${lead.company_website}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-medium"
+                        >
+                          <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{lead.company_website}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 italic">-</span>
+                      )}
+                    </td>
+
+                    {/* company_facebook */}
+                    <td className="px-3 py-3.5 whitespace-nowrap">
+                      {lead.company_facebook ? (
+                        <a
+                          href={lead.company_facebook.startsWith('http') ? lead.company_facebook : `https://${lead.company_facebook}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <Facebook className="w-3.5 h-3.5 shrink-0" />
+                          <span className="max-w-[100px] truncate">{lead.company_facebook}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 italic">-</span>
+                      )}
+                    </td>
+
+                    {/* company_twitter */}
+                    <td className="px-3 py-3.5 whitespace-nowrap">
+                      {lead.company_twitter ? (
+                        <a
+                          href={lead.company_twitter.startsWith('http') ? lead.company_twitter : `https://${lead.company_twitter}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sky-500 hover:underline flex items-center gap-1"
+                        >
+                          <Twitter className="w-3.5 h-3.5 shrink-0" />
+                          <span className="max-w-[100px] truncate">{lead.company_twitter}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 italic">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
